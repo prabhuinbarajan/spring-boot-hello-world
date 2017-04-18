@@ -1,11 +1,11 @@
 ---
-id: '58f2da5ee936e0000b15134e'
-name: 'Qubeship default opinion'
-description: 'default out-of-the-box opinion'
-visibility: 'private'
+name: 'Qubeship slack notification opinion'
+description: 'opinion with slack notification'
+visibility: 'public'
 
 variables:
   - name: BASE_URL_E2E
+    value: ""
     optional: true
   - name: DOCKERFILE
     optional: false
@@ -28,6 +28,9 @@ variables:
   - name: ACCESS_TOKEN
     optional: true
     value: $(qubeship:secret:[isDefault.eq(true).and(type.eq('target')).and(provider.eq('kubernetes'))])
+  - name: SLACK_ENDPOINT
+    optional: true
+    value: $(qubeship:endpoints:[type.eq('generic').and(name.eq('slack'))]:endPoint)
 
 isDefault: 'True'
 graml:
@@ -35,6 +38,7 @@ graml:
 graph:
   build:
     has:
+      - notify_begin
       - compile
       - unittest
       - static_code_analysis
@@ -60,10 +64,19 @@ graph:
   deploy_to_prod:
     has:
       - release_to_prod
+      - notify_complete
     on_error:
       - notify
 # below is the default implementation
 vertices:
+  notify_begin:
+    action:
+      - "qube_utils/scripts/notify.sh $1 INFO 'Build : $2 $3'"
+    args:
+      - $SLACK_ENDPOINT
+      - $(qubeship:env::BUILD_NUMBER)
+      - started
+    execute_outside_toolchain: true
   build:
     skippable: true
   bake:
@@ -79,11 +92,14 @@ vertices:
     action:
       - "docker tag $1 $2/$3:$4"
       - "docker push $2/$3:$4"
+      - "docker tag $1 $2/$3:$5"
+      - "docker push $2/$3:$5"      
     args:
       - $(CONTAINER_NAME)
       - $(target_registry).additionalInfo.account
       - $(CONTAINER_NAME)
       - $(CONTAINER_TAG)
+      - $(qubeship:env::BUILD_NUMBER)
     execute_outside_toolchain: true
   deploy_to_qa:
     skippable: true
@@ -99,7 +115,7 @@ vertices:
       - "qube_utils/deployment_templates/k8s/qube_deploy_k8s.sh $14/$1:$2 $3 $4 $5-deployment /tmp/deployment/$6 $7 $8 $9 $10 $11 $12 $13"
     args:
       - $(CONTAINER_NAME)
-      - $(CONTAINER_TAG)
+      - $(qubeship:env::BUILD_NUMBER)
       - $(target_k8s_cluster).additionalInfo.namespace
       - $(CONTAINER_NAME)
       - $(CONTAINER_NAME)
@@ -112,3 +128,12 @@ vertices:
       - $(target_k8s_cluster).provider
       - $(target_k8s_cluster).endPoint
       - $(target_registry).additionalInfo.account
+  notify_complete:
+    action:
+      - "qube_utils/scripts/notify.sh $1 INFO 'Build : $2 $3. Deployed at $4'"
+    args:
+      - $SLACK_ENDPOINT
+      - $(qubeship:env::BUILD_NUMBER)
+      - finished
+      - $BASE_URL_E2E
+    execute_outside_toolchain: true
