@@ -17,6 +17,8 @@ endpoint:
 variables:
   - name: APP_VERSION
     value: v0.1
+  - name: BASE_URL_E2E
+    value: http://sandbox.qubeship.io/my-java-3/api
 build:
   compile:
     publish:
